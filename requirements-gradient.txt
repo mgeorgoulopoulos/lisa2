@@ -1,0 +1,5 @@
+# Optional offline experiment only; normal viewer needs no Torch.
+numpy==1.26.4
+pillow==13.0.0
+torch==2.5.1+cu118
+# Install with --extra-index-url https://download.pytorch.org/whl/cu118

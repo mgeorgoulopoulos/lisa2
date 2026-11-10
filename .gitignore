@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.nbc
+*.nbi
+assets/
+runs/
+
+.venv-gradient/
+/manualTests/
+/build/
+/dist/
+/release/

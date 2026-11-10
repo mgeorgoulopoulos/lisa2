@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="580" viewBox="0 0 1000 580">
+<rect width="1000" height="580" rx="20" fill="#0b1018"/>
+<g font-family="Segoe UI,Arial,sans-serif"><text x="32" y="42" font-size="22" fill="#eef3ff">FOUR CAMERAS. ONE MESH.</text>
+<text x="32" y="70" font-size="15" fill="#9aaec9">Regular tetrahedron · each camera looks at the origin</text>
+<path d="M497.70,202.91 L702.86,448.38" fill="none" stroke="#33455c" stroke-width="2"/>
+<path d="M497.70,202.91 L382.30,20.22" fill="none" stroke="#33455c" stroke-width="2"/>
+<path d="M497.70,202.91 L177.14,488.49" fill="none" stroke="#33455c" stroke-width="2"/>
+<path d="M702.86,448.38 L382.30,20.22" fill="none" stroke="#33455c" stroke-width="2"/>
+<path d="M702.86,448.38 L177.14,488.49" fill="none" stroke="#33455c" stroke-width="2"/>
+<path d="M382.30,20.22 L177.14,488.49" fill="none" stroke="#33455c" stroke-width="2"/>
+<path d="M497.70070651516846,202.90901222887373 L440,290" stroke="#ffbe70" stroke-opacity="0.65" stroke-dasharray="6 7"/>
+<path d="M702.8587741246563,448.384075434932 L440,290" stroke="#67e5e0" stroke-opacity="0.65" stroke-dasharray="6 7"/>
+<path d="M382.29929348483154,20.22047509037162 L440,290" stroke="#bc9aff" stroke-opacity="0.65" stroke-dasharray="6 7"/>
+<path d="M177.1412258753437,488.4864372458227 L440,290" stroke="#fb7fb8" stroke-opacity="0.65" stroke-dasharray="6 7"/>
+<circle cx="440" cy="290" r="58" fill="#19263c" stroke="#6c839d"/><path d="M411,303 L434,257 L467,298 Z M411,303 L458,324 L467,298 M434,257 L458,324" fill="none" stroke="#a9c8ea" stroke-width="2"/><text x="440" y="379" text-anchor="middle" font-size="16" fill="#edf3ff">shared mesh</text>
+<circle cx="497.70070651516846" cy="202.90901222887373" r="21" fill="#ffbe70"/><text x="497.70070651516846" y="208.90901222887373" text-anchor="middle" font-size="18" font-weight="bold" fill="#101722">1</text>
+<circle cx="702.8587741246563" cy="448.384075434932" r="21" fill="#67e5e0"/><text x="702.8587741246563" y="454.384075434932" text-anchor="middle" font-size="18" font-weight="bold" fill="#101722">2</text>
+<circle cx="382.29929348483154" cy="20.22047509037162" r="21" fill="#bc9aff"/><text x="382.29929348483154" y="26.22047509037162" text-anchor="middle" font-size="18" font-weight="bold" fill="#101722">3</text>
+<circle cx="177.1412258753437" cy="488.4864372458227" r="21" fill="#fb7fb8"/><text x="177.1412258753437" y="494.4864372458227" text-anchor="middle" font-size="18" font-weight="bold" fill="#101722">4</text>
+<text x="740" y="196" font-size="17" fill="#ffbe70">C1  (+1, +1, +1)</text>
+<text x="740" y="244" font-size="17" fill="#67e5e0">C2  (+1, −1, −1)</text>
+<text x="740" y="292" font-size="17" fill="#bc9aff">C3  (−1, +1, −1)</text>
+<text x="740" y="340" font-size="17" fill="#fb7fb8">C4  (−1, −1, +1)</text>
+<text x="740" y="420" font-size="15" fill="#a3b1c9">Directions normalized</text><text x="740" y="445" font-size="15" fill="#a3b1c9">Radius 3.2 · vertical FOV 42°</text><text x="740" y="470" font-size="15" fill="#a3b1c9">Perspective · aspect 4:3</text></g></svg>
