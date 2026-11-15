@@ -15,10 +15,12 @@ the mesh, compare results and explore it in 3D.
 
 ## See the illusion
 
-![The same saved mesh during an orbit and camera dive](docs/media/camera-dive.gif)
+![The best saved mesh during an orbit and camera dive](docs/media/camera-dive.gif)
 
 Move between the four viewpoints to reveal the triangles behind the illusion.
-The animation renders one saved mesh along the preview's orbit-and-dive path.
+The animation shows the best saved mesh along the preview's orbit-and-dive path.
+It reached 93.05% fitness under the updated objective by alternating
+evolution and deterministic updates.
 
 ## Four viewpoints, one object
 
