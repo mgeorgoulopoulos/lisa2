@@ -76,5 +76,17 @@ with tempfile.TemporaryDirectory(dir=base.resolve()) as temp:
         assert read_project(new_project)['settings']['triangles']==12 and app.best_views is None
         assert not (run_directory(new_project)/'best.npz').exists()
         assert hashlib.sha256(old_checkpoint.read_bytes()).hexdigest()==digest
+        app.settings['balance_regions'].set(True)
+        app.settings['region_share'].set('27')
+        copied_settings=app.get_settings()
+        app.new(keep_settings=True)
+        assert app.path is None and app.images==[None]*4 and not app.progress
+        assert app.get_settings()==copied_settings
+        for i,image in enumerate(images): app.assign_image(i,image)
+        next_project=folder/'new-targets.json'
+        with patch('lisa2.app.filedialog.asksaveasfilename',return_value=str(next_project)): assert app.save()
+        assert read_project(next_project)['settings']==copied_settings
+        assert not (run_directory(next_project)/'best.npz').exists()
+        assert hashlib.sha256(old_checkpoint.read_bytes()).hexdigest()==digest
         app.shutdown_renderers(wait=True);app.drop.close();root.destroy()
 print('PASS: hidden Studio selection, settings, start/stop, load/history, preview routing, OBJ export and Save As; no desktop interaction.')

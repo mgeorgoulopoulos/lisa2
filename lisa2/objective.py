@@ -1,11 +1,92 @@
 """Separate, normalized interior-color, edge and black-background losses."""
+from collections import deque
+
 import numpy as np
-from scipy.ndimage import binary_dilation, binary_erosion
+from scipy.ndimage import binary_dilation, binary_erosion, distance_transform_edt, gaussian_filter, label
+
+
+CONTOUR_DEFAULTS = dict(preserve_contours=True, contour_max_radius=20,
+                        contour_internal_radius=6, preserve_thin_features=True,
+                        balance_regions=False, region_count=2, region_share=20,
+                        exterior_weight=4., shell_strength=.25, thin_strength=1.25)
+
+WEIGHT_LIMITS = dict(exterior_weight=(1.25,8.), shell_strength=(0.,2.),
+                     thin_strength=(0.,3.))
+
+
+def contour_options(settings):
+    options = {}
+    if settings['preserve_contours']:
+        options.update(preserve_contours=True, contour_max_radius=settings['contour_max_radius'],
+                       contour_internal_radius=settings['contour_internal_radius'])
+        for key in ('exterior_weight','shell_strength'):
+            if settings[key]!=CONTOUR_DEFAULTS[key]:
+                options[key]=settings[key]
+    if settings['preserve_thin_features']:
+        options['preserve_thin_features'] = True
+        if settings['thin_strength']!=CONTOUR_DEFAULTS['thin_strength']:
+            options['thin_strength']=settings['thin_strength']
+    if settings['balance_regions']:
+        options.update(balance_regions=True, region_count=settings['region_count'],
+                       region_share=settings['region_share'])
+    return options
+
+
+def thin_feature_weights(mask, strength=1.25):
+    """Boost foreground that survives only small disk openings."""
+    if not mask.any():
+        return np.ones(mask.shape)
+    scale = mask.shape[1] / 320
+    depth = distance_transform_edt(np.pad(mask, 1))[1:-1, 1:-1]
+    thickness = np.zeros(mask.shape)
+    radii = sorted({max(1, round(scale * r)) for r in (2, 4, 6, 8, 12, 16)})
+    for radius in radii:
+        core = depth > radius
+        if not core.any():
+            break
+        opened = distance_transform_edt(~core) <= radius
+        thickness[opened] = radius / scale
+    boost = np.clip((14 - thickness) / 12, 0, 1) * mask
+    sigma = 1.2 * scale
+    smooth = gaussian_filter(boost, sigma)
+    coverage = gaussian_filter(mask.astype(float), sigma)
+    return 1 + strength * mask * smooth / np.maximum(coverage, 1e-9)
+
+
+def balance_region_weights(weights, mask, count, share):
+    """Redistribute a percentage of foreground weight to the largest regions."""
+    scale = mask.shape[1] / 320
+    depth = distance_transform_edt(np.pad(mask, 1))[1:-1, 1:-1]
+    regions, cores = label(depth > max(1, round(scale)))
+    if cores < 2:
+        return
+    queue = deque(zip(*np.nonzero(regions)))
+    height, width = mask.shape
+    while queue:
+        y, x = queue.popleft()
+        for row, col in ((y-1,x),(y+1,x),(y,x-1),(y,x+1)):
+            if 0 <= row < height and 0 <= col < width and mask[row,col] and regions[row,col] == 0:
+                regions[row,col] = regions[y,x]
+                queue.append((row,col))
+    sizes = np.bincount(regions.ravel(), minlength=cores+1)
+    minimum = max(1, round(12 * scale**2))
+    selected = sorted((i for i in range(1,cores+1) if sizes[i]>=minimum),
+                      key=lambda i: (-sizes[i],i))[:count]
+    if len(selected) < 2:
+        return
+    fraction = share / 100
+    budget = fraction * weights.sum() / len(selected)
+    weights *= 1 - fraction
+    for region in selected:
+        weights[regions == region] += budget / sizes[region]
 
 
 class ColorObjective:
     """Only interior RGB error and a small squared light-spill penalty."""
-    def __init__(self,target,black_penalty=.15):
+    def __init__(self,target,black_penalty=.15,*,preserve_contours=False,
+                 contour_max_radius=20,contour_internal_radius=6,preserve_thin_features=False,
+                 balance_regions=False,region_count=2,region_share=20,
+                 exterior_weight=4.,shell_strength=.25,thin_strength=1.25):
         self.target=target.copy()
         self.mask=target.max(axis=3)>.025
         self.target[~self.mask]=0.
@@ -14,8 +95,23 @@ class ColorObjective:
         self.background_weights=np.zeros_like(self.weights)
         for k,mask in enumerate(self.mask):
             count=max(int(mask.sum()),1)
-            self.foreground_weights[k]=mask/count
-            self.background_weights[k]=black_penalty*(~mask)/count
+            if preserve_contours:
+                scale=target.shape[2]/640
+                outer=contour_max_radius*scale
+                inner=contour_internal_radius*scale
+                distance=distance_transform_edt(~mask) if mask.any() else np.full(mask.shape,outer)
+                exterior=1+(exterior_weight-1)*np.minimum(distance/outer,1)
+                depth=distance_transform_edt(mask)
+                shell=np.where(depth<=inner,np.clip((inner+1-depth)/inner,0,1),0)
+                self.foreground_weights[k]=mask*(1+shell_strength*shell)/count
+                self.background_weights[k]=(~mask)*exterior/count
+            else:
+                self.foreground_weights[k]=mask/count
+                self.background_weights[k]=black_penalty*(~mask)/count
+            if preserve_thin_features:
+                self.foreground_weights[k] *= thin_feature_weights(mask,thin_strength)
+            if balance_regions:
+                balance_region_weights(self.foreground_weights[k],mask,region_count,region_share)
         self.weights=self.foreground_weights+self.background_weights
         self.baseline=self.terms(np.zeros_like(target))['total']
 

@@ -3,6 +3,8 @@ import os
 os.environ.setdefault('OPENBLAS_NUM_THREADS','1')
 os.environ.setdefault('OMP_NUM_THREADS','1')
 os.environ.setdefault('MKL_NUM_THREADS','1')
+from bisect import bisect_left
+import csv
 import json
 from pathlib import Path
 import subprocess
@@ -18,13 +20,13 @@ from .derived import checkpoint_views
 from .gif_export import export_gif
 from .runtime import command,configure,child_directory
 
-BG='#10151e';PANEL='#192230';EDGE='#2c3a50';TEXT='#e6edf5';MUTED='#9aacc2';ACCENT='#f4b65f';GREEN='#80d2b0'
+BG='#10151e';PANEL='#192230';EDGE='#2c3a50';TEXT='#e6edf5';MUTED='#9aacc2';ACCENT='#f4b65f';GREEN='#80d2b0';BLUE='#59b9ff'
 
 
 class Studio:
     def __init__(self,root,project=None):
         self.root=root;self.path=None;self.images=[None]*4;self.photos=[None]*4
-        self.worker=None;self.preview_processes=[];self.progress={};self.stamp=None
+        self.worker=None;self.worker_method=None;self.preview_processes=[];self.progress={};self.stamp=None
         self.closing=False;self.stopping=False;self.failures=0
         self.view_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='Lisa2-views')
         self.gif_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='Lisa2-gif')
@@ -41,6 +43,10 @@ class Studio:
         self.style.map('TButton',background=[('active','#3c516d'),('disabled','#202936')],foreground=[('disabled','#677991')])
         self.style.configure('Start.TButton',background=ACCENT,foreground=BG,font=('Segoe UI',11,'bold'))
         self.style.map('Start.TButton',background=[('active','#ffd494'),('disabled','#514635')])
+        self.style.configure('Deterministic.TButton',background=BLUE,foreground=BG,font=('Segoe UI',11,'bold'))
+        self.style.map('Deterministic.TButton',background=[('active','#9bd7ff'),('disabled','#294760')])
+        self.style.configure('Interleaved.TButton',background='#c5a2ff',foreground=BG,font=('Segoe UI',11,'bold'))
+        self.style.map('Interleaved.TButton',background=[('active','#ddc8ff'),('disabled','#514066')])
         self.style.configure('TCheckbutton',background=PANEL,foreground=TEXT,padding=3)
         self.style.map('TCheckbutton',background=[('active',PANEL)],foreground=[('disabled','#677991')])
         self.style.configure('TEntry',fieldbackground=BG,foreground=TEXT,insertcolor=TEXT)
@@ -58,6 +64,7 @@ class Studio:
     def build_menu(self):
         menu=tk.Menu(self.root);file=tk.Menu(menu,tearoff=False)
         file.add_command(label='New project',accelerator='Ctrl+N',command=self.new)
+        file.add_command(label='New project with current settings…',command=lambda:self.new(keep_settings=True))
         file.add_command(label='Load project…',accelerator='Ctrl+O',command=self.load)
         file.add_command(label='Save project',accelerator='Ctrl+S',command=self.save)
         file.add_command(label='Save project as…',command=self.save_as)
@@ -111,17 +118,35 @@ class Studio:
             canvas.grid(row=0,column=i,sticky='ew',padx=(0 if i==0 else 8,0));self.best_canvases.append(canvas)
             canvas.bind('<Configure>',lambda e,index=i:self.draw_best(index))
         controls=ttk.Frame(shell);controls.pack(fill='x',pady=(18,14))
-        self.start_button=ttk.Button(controls,text='▶  Start evolution',style='Start.TButton',command=self.start);self.start_button.pack(side='left')
-        self.stop_button=ttk.Button(controls,text='■  Stop & save',command=self.stop,state='disabled');self.stop_button.pack(side='left',padx=8)
+        run_control=ttk.Frame(controls);run_control.pack(side='left')
+        self.start_button=ttk.Button(run_control,text='▶  Start evolution',style='Start.TButton',command=self.toggle_run)
+        self.start_button.pack(side='left')
+        self.run_menu_button=ttk.Menubutton(run_control,text='▾',style='Start.TButton')
+        self.run_menu_button.pack(side='left')
+        run_menu=tk.Menu(self.run_menu_button,tearoff=False)
+        for method,label in (('evolution','Evolution'),('deterministic','Deterministic'),('interleaved','Interleaved')):
+            run_menu.add_command(label=label,command=lambda selected=method:self.start(selected))
+        self.run_menu_button.configure(menu=run_menu)
+        self.evolve_button=ttk.Button(controls,text='Evolve settings…',command=self.evolve_settings,state='disabled')
+        self.evolve_button.pack(side='left',padx=8)
         self.preview_button=ttk.Button(controls,text='◈  3D preview',command=self.preview,state='disabled');self.preview_button.pack(side='left')
         self.status_var=tk.StringVar(value='Add four images to begin.')
         ttk.Label(controls,textvariable=self.status_var,foreground=GREEN,wraplength=530).pack(side='right')
         body=ttk.Frame(shell);body.pack(fill='both',expand=True);body.columnconfigure(0,weight=3);body.columnconfigure(1,weight=2);body.rowconfigure(0,weight=1)
         left=ttk.Frame(body);left.grid(row=0,column=0,sticky='nsew',padx=(0,18))
-        ttk.Label(left,text='FITNESS HISTORY',font=('Segoe UI',10,'bold')).pack(anchor='w',pady=(0,8))
+        graph_header=ttk.Frame(left);graph_header.pack(fill='x',pady=(0,8))
+        ttk.Label(graph_header,text='FITNESS HISTORY',font=('Segoe UI',10,'bold')).pack(side='left')
+        self.graph_axis_button=ttk.Button(graph_header,text='Show generations',command=self.toggle_graph_axis)
+        self.graph_axis_button.pack(side='right')
+        self.graph_generations=False
+        self.graph_journal=None
+        self.graph_records=[]
         self.graph=tk.Canvas(left,bg='#0b111a',highlightthickness=1,highlightbackground=EDGE,height=240)
         self.graph.pack(fill='both',expand=True);self.graph.bind('<Configure>',lambda e:self.draw_graph())
-        ttk.Label(left,text='All sessions · x: CMA-ES geometry proposals · y: fitness',style='Muted.TLabel').pack(anchor='w',pady=(5,10))
+        self.graph_zoom=0
+        self.graph.bind('<Control-MouseWheel>',self.zoom_graph)
+        self.graph_caption=ttk.Label(left,text='Elapsed run time',style='Muted.TLabel')
+        self.graph_caption.pack(anchor='w',pady=(5,10))
         self.stats_var=tk.StringVar(value='Cycle 0  ·  Triangle 0 / 768\nGeometry proposals  0\nFitness  0.000000\nPhysical loss  —\nAccepted updates  0')
         ttk.Label(left,textvariable=self.stats_var,font=('Consolas',11),justify='left').pack(anchor='w')
         right=ttk.Frame(body,style='Panel.TFrame',padding=16);right.grid(row=0,column=1,sticky='nsew')
@@ -149,6 +174,41 @@ class Studio:
         tk.Label(right,textvariable=self.resolution_note,bg=PANEL,fg=MUTED,font=('Segoe UI',9)).pack(anchor='w',pady=(6,0))
         self.settings['width'].trace_add('write',lambda *args:self.update_resolution_note())
         advanced=ttk.Button(right,text='Advanced settings…',command=self.advanced);advanced.pack(anchor='w',pady=(10,0));self.option_widgets.append(advanced)
+        contours=ttk.LabelFrame(right,text='CONTOURS',padding=8)
+        contours.pack(fill='x',pady=(12,0))
+        checkbox=ttk.Checkbutton(contours,text='Preserve contours',
+                                 variable=self.settings['preserve_contours'],command=self.mark_dirty)
+        checkbox.grid(row=0,column=0,columnspan=2,sticky='w')
+        self.option_widgets.append(checkbox)
+        contours.columnconfigure(0,weight=1)
+        self.contour_fields=[]
+        for row,(label,key) in enumerate((('Max radius','contour_max_radius'),
+                                         ('Internal radius','contour_internal_radius')),1):
+            caption=ttk.Label(contours,text=label)
+            caption.grid(row=row,column=0,sticky='w',pady=3)
+            entry=ttk.Entry(contours,textvariable=self.settings[key],width=12)
+            entry.grid(row=row,column=1,sticky='e',pady=3)
+            self.contour_fields.extend((caption,entry))
+        ttk.Label(contours,text='Pixels at 640 × 480',style='Muted.TLabel').grid(row=3,column=0,columnspan=2,sticky='w')
+        thin=ttk.Checkbutton(contours,text='Preserve thin features',
+                             variable=self.settings['preserve_thin_features'],command=self.mark_dirty)
+        thin.grid(row=4,column=0,columnspan=2,sticky='w',pady=(6,0))
+        self.option_widgets.append(thin)
+        balance=ttk.Checkbutton(contours,text='Balance separate regions',
+                                variable=self.settings['balance_regions'],command=self.mark_dirty)
+        balance.grid(row=5,column=0,columnspan=2,sticky='w',pady=(6,0))
+        self.option_widgets.append(balance)
+        self.region_fields=[]
+        for row,(label,key) in enumerate((('Region count','region_count'),
+                                         ('Region share (%)','region_share')),6):
+            caption=ttk.Label(contours,text=label)
+            caption.grid(row=row,column=0,sticky='w',pady=3)
+            entry=ttk.Entry(contours,textvariable=self.settings[key],width=12)
+            entry.grid(row=row,column=1,sticky='e',pady=3)
+            self.region_fields.extend((caption,entry))
+        self.settings['preserve_contours'].trace_add('write',lambda *_:self.update_contour_fields(self.is_running()))
+        self.settings['balance_regions'].trace_add('write',lambda *_:self.update_contour_fields(self.is_running()))
+        self.update_contour_fields(False)
         tk.Label(right,text='Plateau compares exact loss after each full cycle\nand its global RGB fit. Stop always keeps progress.',bg=PANEL,fg=MUTED,justify='left',font=('Segoe UI',9)).pack(anchor='w',pady=(12,0))
         self.export_status=tk.StringVar(value='')
         ttk.Label(shell,textvariable=self.export_status,foreground=GREEN,wraplength=1000).pack(anchor='w',pady=(12,0))
@@ -182,6 +242,13 @@ class Studio:
 
     def mark_dirty(self):
         self.status_var.set('Settings apply on the next Start / Resume.')
+
+    def update_contour_fields(self,running):
+        for key,fields in (('preserve_contours',self.contour_fields),
+                           ('balance_regions',self.region_fields)):
+            enabled=self.settings[key].get() and not running
+            for widget in fields:
+                widget.state(['!disabled'] if enabled else ['disabled'])
 
     def update_resolution_note(self):
         try:
@@ -300,15 +367,20 @@ class Studio:
         if index is None: return
         for offset,path in enumerate(paths[:4-index]): self.assign_image(index+offset,path)
 
-    def new(self):
+    def new(self,keep_settings=False):
         if self.is_running(): messagebox.showinfo('Evolution is running','Stop and save the current evolution first.');return
+        try:
+            settings=self.get_settings() if keep_settings else DEFAULTS
+        except (ValueError,tk.TclError) as error:
+            messagebox.showerror('Invalid setting',str(error));return
         if self.path and not self.save(fork_dimensions=False): return
         if not self.path and any(self.images) and not messagebox.askyesno('New project','Discard the unsaved target selection?'): return
-        self.path=None;self.images=[None]*4;self.progress={};self.stamp=None;self.put_settings(DEFAULTS)
+        self.path=None;self.images=[None]*4;self.progress={};self.stamp=None;self.put_settings(settings)
         self.reset_best()
         self.project_label.config(text='Unsaved project');self.root.title('Lisa2 Studio')
         for i in range(4): self.draw_slot(i)
-        self.status_var.set('Add four images to begin.');self.draw_graph();self.refresh_stats()
+        self.status_var.set('Settings copied. Add four new images.' if keep_settings else 'Add four images to begin.')
+        self.draw_graph();self.refresh_stats();self.update_buttons(False)
 
     def load(self):
         if self.is_running(): messagebox.showinfo('Evolution is running','Stop and save before loading another project.');return
@@ -366,23 +438,57 @@ class Studio:
             self.open_path(destination)
         except Exception as error: messagebox.showerror('Cannot copy project',str(error))
 
-    def start(self):
+    def evolve_settings(self):
+        if not self.path or self.is_running(): return
+        project=self.path
+        checkpoint=run_directory(project)/'best.npz'
+        if not checkpoint.exists(): return
+        try:
+            settings=self.get_settings()
+            saved=read_project(project)['settings']
+            if any(settings[key]!=saved[key] for key in ('triangles','width')):
+                raise ValueError('Use the saved triangle count and resolution for settings trials.')
+        except (ValueError,OSError,tk.TclError) as error:
+            messagebox.showerror('Cannot evolve settings',str(error));return
+
+        def apply(selected):
+            if self.path!=project or self.is_running():
+                raise ValueError('Stop evolution in the original project before applying settings.')
+            update_settings(project,selected)
+            self.put_settings(selected)
+            self.status_var.set('Selected settings saved. Resume to evolve with them.')
+
+        from .settings_dialog import SettingsDialog
+        dialog=SettingsDialog(self.root,checkpoint,self.images,settings,apply)
+        self.root.wait_window(dialog.window)
+
+    def toggle_run(self):
+        if self.is_running():
+            if not self.stopping: self.stop()
+        else:
+            self.start()
+
+    def start(self,method='evolution'):
         if self.is_running(): return
         if not self.save(): return
         folder=run_directory(self.path);(folder/'control.txt').write_text('run');(folder/'error.json').unlink(missing_ok=True)
         try:
             env=os.environ.copy();env.update(OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MKL_NUM_THREADS='1')
             with (folder/'worker.log').open('a',encoding='utf-8') as log:
-                self.worker=subprocess.Popen(command('worker','--project',self.path),
+                self.worker=subprocess.Popen(command('worker','--project',self.path,'--method',method),
                     cwd=str(child_directory(folder)),stdout=log,stderr=subprocess.STDOUT,env=env,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
-            self.stopping=False;self.status_var.set('Starting evolution…');self.update_buttons(True)
-        except Exception as error: messagebox.showerror('Cannot start evolution',str(error))
+            self.worker_method=method
+            self.stopping=False
+            self.status_var.set('Starting '+{'evolution':'evolution','deterministic':'deterministic update',
+                                             'interleaved':'interleaved updates'}[method]+'…')
+            self.update_buttons(True)
+        except Exception as error: messagebox.showerror('Cannot start update',str(error))
 
     def stop(self):
         if self.path and self.is_running():
             (run_directory(self.path)/'control.txt').write_text('stop');self.stopping=True
-            self.status_var.set('Stopping at a safe checkpoint…');self.stop_button.config(state='disabled')
+            self.status_var.set('Stopping at a safe checkpoint…');self.update_buttons(True)
 
     def preview(self):
         if not self.path: return
@@ -428,10 +534,18 @@ class Studio:
         self.gif_future=self.gif_pool.submit(export_gif,run_directory(self.path)/'best.npz',path,progress)
 
     def update_buttons(self,running):
-        self.start_button.config(state='disabled' if running or not all(self.images) else 'normal',text='▶  Resume evolution' if self.progress.get('step',0) else '▶  Start evolution')
-        self.stop_button.config(state='normal' if running and not self.stopping else 'disabled')
+        method=(self.worker_method or self.progress.get('method','evolution')) if running else 'evolution'
+        label,style={'evolution':('evolution','Start.TButton'),
+                     'deterministic':('deterministic update','Deterministic.TButton'),
+                     'interleaved':('interleaved updates','Interleaved.TButton')}[method]
+        ready_to_start=not running and all(self.images)
+        self.start_button.config(state='normal' if ready_to_start or (running and not self.stopping) else 'disabled',
+                                 style=style,text=f'■  Stop {label}' if running else f'▶  Start {label}')
+        self.run_menu_button.config(state='normal' if ready_to_start else 'disabled',style=style)
         for widget in self.option_widgets: widget.config(state='disabled' if running else 'normal')
+        self.update_contour_fields(running)
         ready=self.path and (run_directory(self.path)/'best.npz').exists()
+        self.evolve_button.config(state='normal' if ready and not running else 'disabled')
         self.preview_button.config(state='normal' if ready else 'disabled')
 
     def poll_progress(self):
@@ -444,7 +558,11 @@ class Studio:
             running=self.is_running()
             if not self.stopping:
                 status=progress['status']
-                self.status_var.set({'running':'Evolution in progress…','global_rgb':'Fitting all vertex colors…','stopped':'Stopped & saved. Ready to resume.',
+                if running: self.worker_method=self.worker_method or progress.get('method','evolution')
+                active=progress.get('active_method',progress.get('method'))
+                running_text='Deterministic update in progress…' if active=='deterministic' else 'Evolution in progress…'
+                if progress.get('method')=='interleaved': running_text='Interleaved · '+running_text
+                self.status_var.set({'running':running_text,'global_rgb':'Fitting all vertex colors…','stopped':'Stopped & saved. Ready to resume.',
                     'plateau':'Plateau detected · automatically stopped & saved.','error':'Evolution stopped with an error.'}.get(status,status))
                 if not running and status in ('running','global_rgb'): self.status_var.set('Saved checkpoint recovered. Ready to resume.')
             self.draw_graph();self.refresh_stats()
@@ -465,33 +583,104 @@ class Studio:
             f"Refined proposals {p.get('refined_candidates',0):,}    Local steps  {p.get('refine_steps_accepted',0):,}\n"
             f"Last cycle gain   {gain}    Plateau  {p.get('plateau_streak',0)} / {p.get('plateau_patience',3)}")
 
+    def zoom_graph(self,event):
+        if event.delta:
+            steps=max(1,abs(event.delta)//120)
+            zoom=max(0,min(7,self.graph_zoom+(steps if event.delta>0 else -steps)))
+            if zoom!=self.graph_zoom:
+                self.graph_zoom=zoom
+                self.draw_graph()
+        return 'break'
+
+    def toggle_graph_axis(self):
+        self.graph_generations=not self.graph_generations
+        self.graph_axis_button.config(text='Show time' if self.graph_generations else 'Show generations')
+        self.graph_caption.config(text='Generations · one per deterministic update'
+                                  if self.graph_generations else 'Elapsed run time')
+        self.draw_graph()
+
+    def read_graph_journal(self):
+        path=run_directory(self.path)/'statistics.csv' if self.path else None
+        if path is None:
+            self.graph_journal=None
+            self.graph_records=[]
+            return
+        try:
+            stat=path.stat()
+            key=(path,stat.st_ino,stat.st_mtime_ns,stat.st_size)
+            if key==self.graph_journal:
+                return
+            records=[]
+            previous_step=0
+            generations=0
+            with path.open(newline='',encoding='utf-8') as stream:
+                for row in csv.DictReader(stream):
+                    step=int(row['step'])
+                    deterministic=row.get('mode','').startswith('deterministic')
+                    generations+=max(0,step-previous_step)*(1 if deterministic else int(row.get('generations') or 1))
+                    records.append((step,float(row['seconds']),generations,float(row['fitness']),
+                                    BLUE if deterministic else ACCENT))
+                    previous_step=step
+            self.graph_records=records
+            self.graph_journal=key
+        except (OSError,ValueError,KeyError,TypeError):
+            if self.graph_journal is None or self.graph_journal[0]!=path:
+                self.graph_records=[]
+
     def draw_graph(self):
         c=self.graph;c.delete('all');width=max(c.winfo_width(),400);height=max(c.winfo_height(),220)
         left=65;right=width-18;top=22;bottom=height-34
-        history=self.progress.get('history',[])
-        # Proposal coordinates are persisted in the journal, not inferred from
-        # current settings; changing population never rewrites the old x axis.
-        points=[tuple(p) for p in self.progress.get('proposal_history',[])]
-        if self.path and not points:
-            import csv
-            try:
-                with (run_directory(self.path)/'statistics.csv').open(newline='',encoding='utf-8') as f:
-                    points=[(int(r['proposals']),float(r['fitness'])) for r in csv.DictReader(f) if int(r['step'])<=self.progress.get('step',0)]
-            except (OSError,ValueError,KeyError): pass
-        if not points: points=[(x,y) for x,y in history]
-        if points and self.progress: points.append((self.progress.get('proposals',0),self.progress['fitness']))
-        ymin=min([p[1] for p in points] or [0.]);ymax=max([p[1] for p in points] or [.01]);span=max(ymax-ymin,.001)
-        if ymax==ymin: ymax=ymin+span
-        ymax+=span*.06;ymin-=span*.03;xmax=max([p[0] for p in points]+[1])
+        self.read_graph_journal()
+        axis=2 if self.graph_generations else 1
+        step=self.progress.get('step',0)
+        seconds=self.progress.get('seconds',0)
+        records=self.graph_records
+        end=bisect_left(records,(step,seconds,float('inf')))
+        latest=None
+        if 'fitness' in self.progress:
+            color=BLUE if self.progress.get('active_method',self.progress.get('method'))=='deterministic' else ACCENT
+            last_step,_,generations,_,_=records[end-1] if end else (0,0,0,0,None)
+            if step>last_step:
+                generations+=(step-last_step)*(1 if color==BLUE else self.get_graph_generations())
+            latest=(generations if self.graph_generations else seconds,self.progress['fitness'],color)
+        xmax=max(1,records[end-1][axis] if end else 0,latest[0] if latest else 0)
+        xmin=xmax*(1-max(.01,2**-self.graph_zoom))
+        begin=bisect_left(records,xmin,hi=end,key=lambda record:record[axis])
+        points=[(r[axis],r[3],r[4]) for r in records[begin:end]]
+        if latest and latest[0]>=xmin and (not points or points[-1][:2]!=latest[:2]):
+            points.append(latest)
+        ymin=min((p[1] for p in points),default=0.)
+        ymax=max((p[1] for p in points),default=.01)
+        span=max(ymax-ymin,.001)
+        ymax=min(1.,ymax+span*.06);ymin=min(ymin-span*.03,ymax-span*.03)
         for i in range(5):
             y=top+(bottom-top)*i/4;value=ymax-(ymax-ymin)*i/4
             c.create_line(left,y,right,y,fill='#243044');c.create_text(left-9,y,text=f'{value:.3f}',anchor='e',fill=MUTED,font=('Consolas',9))
         for frac in (0,.5,1):
-            x=left+(right-left)*frac;c.create_text(x,bottom+16,text=f'{xmax*frac:,.0f}',fill=MUTED,font=('Consolas',9))
-        if len(points)>1:
-            xy=[(left+(right-left)*x/xmax,bottom-(bottom-top)*(y-ymin)/(ymax-ymin)) for x,y in points]
-            c.create_line(*[n for pair in xy for n in pair],fill=ACCENT,width=2)
+            value=xmin+(xmax-xmin)*frac
+            minutes,seconds=divmod(round(value),60)
+            label=f'{value:,.0f}' if self.graph_generations else f'{minutes}:{seconds:02d}'
+            x=left+(right-left)*frac;c.create_text(x,bottom+16,text=label,fill=MUTED,font=('Consolas',9))
+        if points:
+            xy=[(left+(right-left)*(x-xmin)/(xmax-xmin),
+                 bottom-(bottom-top)*(min(y,1.)-ymin)/(ymax-ymin),color) for x,y,color in points]
+            if len(xy)>1:
+                line=list(xy[0][:2])
+                active=xy[1][2]
+                for index,(x,y,color) in enumerate(xy[1:],1):
+                    if color!=active:
+                        c.create_line(*line,fill=active,width=2)
+                        line=list(xy[index-1][:2])
+                        active=color
+                    line.extend((x,y))
+                c.create_line(*line,fill=active,width=2)
+            else:
+                x,y,color=xy[0];c.create_oval(x-2,y-2,x+2,y+2,fill=color,outline='')
         else: c.create_text((left+right)/2,(top+bottom)/2,text='Your complete evolution history will appear here.',fill=MUTED)
+
+    def get_graph_generations(self):
+        try: return int(self.settings['generations'].get())
+        except ValueError: return DEFAULTS['generations']
 
     def poll(self):
         try:
@@ -499,7 +688,7 @@ class Studio:
             if not running and self.stopping:
                 self.stopping=False;self.stamp=None;self.poll_progress()
             if self.worker is not None and self.worker.poll() is not None:
-                code=self.worker.returncode;self.worker=None;self.stopping=False
+                code=self.worker.returncode;self.worker=None;self.worker_method=None;self.stopping=False
                 self.stamp=None;self.poll_progress()
                 if code:
                     folder=run_directory(self.path)

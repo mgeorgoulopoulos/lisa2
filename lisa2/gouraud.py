@@ -68,13 +68,26 @@ def export_vertex_obj(path,vertices,colors,images=None):
     np.save(path.with_suffix('.vertex-colors.npy'),colors)
 
 
+def color_matrix(vertices, width, height, ids):
+    rows, columns, values = [], [], []
+    for k, basis in enumerate(BASES):
+        for i, triangle in enumerate(vertices):
+            pixels, barycentric = footprint(triangle, basis, width, height)
+            rows.append(np.repeat(pixels + k * width * height, 3))
+            columns.append(np.tile(ids[i], len(pixels)))
+            values.append(barycentric.ravel())
+    return coo_matrix((np.concatenate(values), (np.concatenate(rows), np.concatenate(columns))),
+                      shape=(4 * width * height, int(ids.max()) + 1)).tocsr()
+
+
 def fit(source,output,max_iterations=40):
     from .train import save,atomic_json
     source=Path(source);out=Path(output);out.mkdir(parents=True,exist_ok=True)
     if (out/'best.npz').exists(): raise FileExistsError('Existing run')
     d=read_checkpoint(source);v=d['vertices'];cfg=json.loads(str(d['config']))
     width=int(cfg.get('width',640));height=width*3//4
-    target=load(cfg['images'],width,height);objective=ColorObjective(target,.15)
+    target=load(cfg['images'],width,height)
+    objective=ColorObjective(target,.15,**cfg.get('contours',{}))
     ids=d.get('vertex_ids',np.arange(len(v)*3).reshape(len(v),3))
     n_colors=int(ids.max())+1
     cap=cfg.get('color_cap',.4)
@@ -82,15 +95,8 @@ def fit(source,output,max_iterations=40):
     if original.ndim==2: original=np.repeat(original[:,None,:],3,axis=1)
     original_image=render_gouraud(v,original,width,height,BASES)
     old_loss=objective.terms(original_image)['total']
-    rows=[];columns=[];values=[];began=time.perf_counter()
-    for k,basis in enumerate(BASES):
-        for i,vertices in enumerate(v):
-            r,a=footprint(vertices,basis,width,height)
-            rows.append(np.repeat(r+k*width*height,3))
-            columns.append(np.tile(ids[i],len(r)))
-            values.append(a.ravel())
-    matrix=coo_matrix((np.concatenate(values),(np.concatenate(rows),np.concatenate(columns))),
-                      shape=(4*width*height,n_colors)).tocsr()
+    began=time.perf_counter()
+    matrix=color_matrix(v,width,height,ids)
     occupied=np.diff(matrix.indptr)>0
     sqrt_weights=np.sqrt(objective.weights.ravel()[occupied])
     design=matrix[occupied].multiply(sqrt_weights[:,None]).tocsr()

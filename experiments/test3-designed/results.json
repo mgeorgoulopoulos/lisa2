@@ -1,0 +1,42 @@
+{
+  "designed": {
+    "initial": {
+      "interior_color": 3.0636064556093956,
+      "black_spill": 2.687415258238558,
+      "total": 5.751021713847954
+    },
+    "init_seconds": 0.956637099996442,
+    "final": {
+      "step": 128,
+      "proposals": 3072,
+      "fitness": -0.18337092007828604,
+      "loss_terms": {
+        "interior_color": 2.3237656940902163,
+        "black_spill": 2.2499835753140798,
+        "total": 4.573749269404296
+      },
+      "seconds": 48.50015880000137,
+      "baseline": 3.8650174613904813
+    }
+  },
+  "baseline": {
+    "initial": {
+      "interior_color": 3.8650174613904813,
+      "black_spill": 0.0,
+      "total": 3.8650174613904813
+    },
+    "init_seconds": null,
+    "final": {
+      "step": 128,
+      "proposals": 3072,
+      "fitness": 0.541676303135225,
+      "loss_terms": {
+        "interior_color": 1.424390351244874,
+        "black_spill": 0.3470387401065194,
+        "total": 1.7714290913513933
+      },
+      "seconds": 78.8941438000038,
+      "baseline": 3.8650174613904813
+    }
+  }
+}

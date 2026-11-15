@@ -1,0 +1,66 @@
+{
+  "format": "Lisa2 project",
+  "version": 1,
+  "id": "d988c48d41d84018bcafd99870de76dd",
+  "name": "Test3 control",
+  "data_directory": "control.data",
+  "images": [
+    "G:\\Projects\\Lisa2\\manualTests\\Test3.data\\images\\1.png",
+    "G:\\Projects\\Lisa2\\manualTests\\Test3.data\\images\\2.png",
+    "G:\\Projects\\Lisa2\\manualTests\\Test3.data\\images\\3.png",
+    "G:\\Projects\\Lisa2\\manualTests\\Test3.data\\images\\4.png"
+  ],
+  "image_sha256": [
+    "0d8d9be08b417c4aa9d1ef661b0556817d527199a33c3c8676eeb6a19c49ece8",
+    "0e2b02baa80f514ba952198f18926ea80fe62a9f97ba13a51be1242a7f24acf6",
+    "78fba76568c4d55944593b2b4b1f7f0c67ed2452cd87fd2b51504d134d3359a8",
+    "4c6a2c287158fb14883602e4f76e907f1487797fc7689e49b1e8269ba4f20dd5"
+  ],
+  "settings": {
+    "color_fit": true,
+    "refinement": true,
+    "auto_stop": true,
+    "population": 8,
+    "generations": 3,
+    "seed": 23,
+    "sigma": 0.005,
+    "refine_radius": 4.0,
+    "refine_difference": 2.0,
+    "refine_steps": 3,
+    "plateau_relative": 0.001,
+    "plateau_patience": 3,
+    "plateau_min_passes": 3,
+    "triangles": 768,
+    "width": 640,
+    "preserve_contours": true,
+    "contour_max_radius": 14,
+    "contour_internal_radius": 13,
+    "preserve_thin_features": false,
+    "balance_regions": true,
+    "region_count": 2,
+    "region_share": 5,
+    "exterior_weight": 6.103,
+    "shell_strength": 1.259,
+    "thin_strength": 1.012
+  },
+  "rendering": {
+    "width": 640,
+    "height": 480,
+    "triangles": 768,
+    "color_model": "affine-gouraud",
+    "two_sided": true,
+    "additive": true,
+    "depth_test": false
+  },
+  "state": {
+    "status": "stopped",
+    "cycle": 8,
+    "triangle": 1,
+    "step": 6145,
+    "proposals": 147480,
+    "fitness": 0.9120424816287391,
+    "loss": 0.3399573443654973,
+    "seconds": 4203.440323700008,
+    "plateau_streak": 0
+  }
+}

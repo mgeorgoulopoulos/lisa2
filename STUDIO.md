@@ -37,6 +37,9 @@ orientation is applied when importing. Exactly four images are required.
    history and lifetime proposal count continue; they do not reset at startup.
 
 Target images define the physical objective and remain fixed after saving.
+To try four different images with the same options, stop the worker and choose
+**File → New project with current settings…**, then fill the four empty slots.
+Starting evolution creates a new project and mesh using the copied settings.
 Create a new project to compare different targets. Settings can be changed
 between runs; their per-session snapshots and per-measurement values are saved.
 Controls are locked while a worker is running. **Save project as** clones the
@@ -78,6 +81,46 @@ local step, finite-difference scale 2 pixels and at most three steps. Open
 **Advanced settings** to change these parameters. Disabling color fitting also
 disables refinement; selecting Evolution only disables both optimization passes.
 All modes preserve the same physical objective and rendering constraints.
+
+## Preserve contours
+
+**Preserve contours** adds distance-based weights to the RGB error.
+**Max radius** (20 px) is the distance outside the silhouette at which
+the weight reaches 4. **Internal radius** (6 px) sets the inner band, where
+the weight rises to 1.25 at the edge. Both radii are specified at 640 × 480
+and scale with target width. Turning the option off disables both fields.
+**Preserve thin features** uses local foreground thickness to increase the
+RGB error weight by up to 2.25× on thin forms. Both options start on in new
+projects. Existing projects keep saved settings and treat missing options as off.
+**Balance separate regions** is optional and starts off. It erodes the mask to
+find separate cores, then assigns pixels back within the original mask. The
+largest regions split the selected foreground weight share equally. Defaults
+are two regions and 20%. Views with fewer than two eligible regions retain
+their existing weights.
+Changing the objective on resume recalculates the plateau reference and records
+an objective-change event. Fitness on either side of that event uses different weights.
+
+## Evolve settings
+
+Stop evolution after a checkpoint exists and click **Evolve settings…**.
+Each round shuffles sixteen options in a 4 × 4 grid. The grid shows the same
+camera view for every option. Scroll to switch cameras while keeping the
+options in the same positions. A progress bar tracks completed trials.
+Trials start from the same saved mesh and use the same triangle order, seed
+and proposal budget. They run at up to 240 × 180, with a short global color
+fit when enabled and eight geometry proposals per triangle for up to eight
+triangles.
+
+One click selects a card and starts the next round. An orange border marks
+the selected card while the next previews render. New cards scroll into view,
+and the cursor turns into a hand when selection opens. The winner returns
+among the shuffled cards. Children combine settings from two candidates and mutate
+individual values. The search includes contour radii, separate contour and
+shell weights, thin-feature strength, and region balance.
+
+**Use selected settings** saves the last selection to the project. Resume
+continues from the saved mesh with those settings. **Cancel** or closing the
+dialog discards the session.
 
 ## Automatic plateau stop
 

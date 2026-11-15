@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(dir=root.resolve()) as temp:
     assert progress['status']=='plateau' and progress['cycle']==1
     assert progress['triangles']==8 and progress['width']==64 and progress['height']==48 and progress['global_solves']==1
     assert d['vertices'].shape==(8,3,3) and d['colors'].shape==(8,3,3)
-    assert json.loads((path/'global-000001/progress.json').read_text())['matrix_shape'][1]==24
+    assert json.loads((path/'global-000001-contours-20-6-thickness/progress.json').read_text())['matrix_shape'][1]==24
     assert all(im.size==(64,48) for im in checkpoint_views(path/'best.npz')['views'])
     gif=folder/'custom.gif';export_gif(path/'best.npz',gif,fps=5)
     with Image.open(gif) as im: assert im.size==(64,48)

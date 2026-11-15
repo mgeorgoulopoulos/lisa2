@@ -7,22 +7,34 @@ import shutil
 import uuid
 from PIL import Image,ImageOps
 from .train import atomic_json
+from .objective import CONTOUR_DEFAULTS, WEIGHT_LIMITS
 
 DEFAULTS=dict(color_fit=True,refinement=True,auto_stop=True,population=8,
               generations=3,seed=23,sigma=.005,refine_radius=4.,
               refine_difference=2.,refine_steps=3,plateau_relative=.001,
-              plateau_patience=3,plateau_min_passes=3,triangles=768,width=640)
+              plateau_patience=3,plateau_min_passes=3,triangles=768,width=640,
+              **CONTOUR_DEFAULTS)
 
 
 def validate_settings(settings):
     s={**DEFAULTS,**settings}
-    for key in ('color_fit','refinement','auto_stop'):
+    for key in ('color_fit','refinement','auto_stop','preserve_contours','preserve_thin_features','balance_regions'):
         if type(s[key]) is not bool: raise ValueError(f'{key} must be true or false')
     for key,minimum in (('population',4),('generations',1),('seed',0),('refine_steps',1),('plateau_patience',1),('plateau_min_passes',1),('triangles',1),('width',4)):
         if type(s[key]) is not int or s[key]<minimum: raise ValueError(f'Invalid {key}')
+    for key in ('contour_max_radius','contour_internal_radius'):
+        if type(s[key]) is not int or s[key]<1: raise ValueError(f'Invalid {key}')
+    if type(s['region_count']) is not int or s['region_count']<2:
+        raise ValueError('Region count must be at least 2')
+    if type(s['region_share']) is not int or not 1<=s['region_share']<=100:
+        raise ValueError('Region share must be between 1% and 100%')
     import math
     for key in ('sigma','refine_radius','refine_difference','plateau_relative'):
         if not math.isfinite(float(s[key])) or s[key]<=0: raise ValueError(f'Invalid {key}')
+    for key,(lower,upper) in WEIGHT_LIMITS.items():
+        if not lower<=float(s[key])<=upper:
+            raise ValueError(f'Invalid {key}')
+        s[key]=float(s[key])
     if s['plateau_relative']>=1: raise ValueError('Plateau threshold must be below 100%')
     if s['width']%4: raise ValueError('Target width must be a multiple of four (4:3 aspect ratio)')
     if s['refinement'] and not s['color_fit']: raise ValueError('Joint refinement requires exact color fitting')
@@ -35,6 +47,8 @@ def read_project(path):
     if data.get('format')!='Lisa2 project' or data.get('version')!=1: raise ValueError('Not a supported Lisa2 project')
     if len(data.get('images',[]))!=4: raise ValueError('Project must contain four image slots')
     settings=data['settings'].copy()
+    for key in ('preserve_contours','preserve_thin_features'):
+        settings.setdefault(key,False)
     for key in ('triangles','width'): settings.setdefault(key,data.get('rendering',{}).get(key,DEFAULTS[key]))
     data['settings']=validate_settings(settings)
     return data

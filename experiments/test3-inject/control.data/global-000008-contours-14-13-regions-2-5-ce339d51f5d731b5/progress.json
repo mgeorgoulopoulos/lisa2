@@ -1,0 +1,58 @@
+{
+  "status": "complete",
+  "step": 1,
+  "total": 1,
+  "fitness": 0.9120424087886358,
+  "loss": 0.33995762589376854,
+  "baseline": 3.8650174613904813,
+  "loss_terms": {
+    "interior_color": 0.2667116411637569,
+    "black_spill": 0.07324598473001168,
+    "total": 0.33995762589376854
+  },
+  "history": [
+    [
+      0,
+      0.9110463402128227
+    ],
+    [
+      1,
+      0.9120424087886358
+    ]
+  ],
+  "seconds": 21.484819100005552,
+  "source_loss": 0.34380744833202836,
+  "geometry_unchanged": true,
+  "triangles": 768,
+  "vertex_colors": 2304,
+  "solver": [
+    {
+      "channel": 0,
+      "iterations": 12,
+      "success": true,
+      "status": 1,
+      "optimality": 5.361301315264626e-07
+    },
+    {
+      "channel": 1,
+      "iterations": 11,
+      "success": true,
+      "status": 1,
+      "optimality": 4.822651127241147e-07
+    },
+    {
+      "channel": 2,
+      "iterations": 14,
+      "success": true,
+      "status": 1,
+      "optimality": 3.122316760156583e-07
+    }
+  ],
+  "matrix_shape": [
+    290529,
+    2304
+  ],
+  "nonzeros": 3996084,
+  "width": 640,
+  "height": 480
+}

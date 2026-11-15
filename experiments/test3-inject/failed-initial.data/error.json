@@ -1,0 +1,4 @@
+{
+  "message": "'dict' object is not callable",
+  "traceback": "Traceback (most recent call last):\n  File \"G:\\Projects\\Lisa2\\lisa2\\project_worker.py\", line 75, in run\n    try: _run(path,folder,project,max_triangles,observer,design_candidates)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"G:\\Projects\\Lisa2\\lisa2\\project_worker.py\", line 196, in _run\n    population.extend(creator.LisaIndividual(sample) for sample in\n  File \"G:\\Projects\\Lisa2\\lisa2\\project_worker.py\", line 197, in <genexpr>\n    design_candidates(state['step'],generation,old,residual,obj.weights,s))\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"G:\\Projects\\Lisa2\\experiments\\test3-inject\\compare.py\", line 36, in designs\n    old_xy = project(old, camera, w, h)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: 'dict' object is not callable\n"
+}
